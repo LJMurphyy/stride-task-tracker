@@ -28,3 +28,34 @@ export async function GET() {
     })
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { title, description, status, userId } = body;
+
+    if (!title || !description || !status || !userId) {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const task = await prisma.task.create({
+      data: { title, description, status, userId },
+    });
+
+    return new Response(JSON.stringify(task), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  } catch (error) {
+    console.error("Error creating task:", error);
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
