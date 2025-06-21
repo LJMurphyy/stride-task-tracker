@@ -1,12 +1,9 @@
-// Import the Prisma client to access the database
 import { PrismaClient } from '@prisma/client'
+import { isTechLead } from '@/app/utilities/checkRole'
 
-// Instantiate a new Prisma client instance
 const prisma = new PrismaClient()
 
-// ======================
-// GET /api/events
-// ======================
+// GET — anyone can fetch events
 export async function GET() {
   try {
     const events = await prisma.event.findMany()
@@ -23,17 +20,22 @@ export async function GET() {
   }
 }
 
-// ======================
-// POST /api/events
-// ======================
+// POST — TECH_LEAD only
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { title, description, startTime, endTime } = body
+    const { title, description, startTime, endTime, userId } = body
 
-    if (!title || !startTime || !endTime) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
+    if (!title || !startTime || !endTime || !userId) {
+      return new Response(JSON.stringify({ error: "Missing required fields: title, startTime, endTime, userId" }), {
         status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    if (!(await isTechLead(userId))) {
+      return new Response(JSON.stringify({ error: "Only TECH_LEADs can create events" }), {
+        status: 403,
         headers: { "Content-Type": "application/json" },
       })
     }
@@ -61,25 +63,30 @@ export async function POST(request: Request) {
   }
 }
 
-// ======================
-// PUT /api/events
-// ======================
+// PUT — TECH_LEAD only
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { id, title, description, startTime, endTime } = body
+    const { id, title, description, startTime, endTime, userId } = body
 
-    if (!id) {
-      return new Response(JSON.stringify({ error: "Event ID is required" }), {
+    if (!id || !userId) {
+      return new Response(JSON.stringify({ error: "Missing required fields: id, userId" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       })
     }
 
+    if (!(await isTechLead(userId))) {
+      return new Response(JSON.stringify({ error: "Only TECH_LEADs can update events" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
     const updateData: {
-      title?: string,
-      description?: string,
-      startTime?: Date,
+      title?: string
+      description?: string
+      startTime?: Date
       endTime?: Date
     } = {}
 
@@ -100,6 +107,40 @@ export async function PUT(request: Request) {
 
   } catch (error) {
     console.error("Error updating event:", error)
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+}
+
+// DELETE — TECH_LEAD only
+export async function DELETE(request: Request) {
+  try {
+    const { id, userId } = await request.json()
+
+    if (!id || !userId) {
+      return new Response(JSON.stringify({ error: "Missing required fields: id and userId" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    if (!(await isTechLead(userId))) {
+      return new Response(JSON.stringify({ error: "Only TECH_LEADs can delete events" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    await prisma.event.delete({ where: { id } })
+
+    return new Response(JSON.stringify({ message: "Event deleted" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })
+  } catch (error) {
+    console.error("Error deleting event:", error)
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

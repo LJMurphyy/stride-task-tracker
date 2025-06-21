@@ -1,4 +1,5 @@
 import { PrismaClient, TaskStatus } from '@prisma/client'
+import { isTechLead } from '@/app/utilities/checkRole'
 
 const prisma = new PrismaClient()
 
@@ -22,7 +23,7 @@ export async function GET() {
   }
 }
 
-// POST handler — creates a new task
+// POST handler — creates a new task (TECH_LEAD only)
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -35,13 +36,15 @@ export async function POST(request: Request) {
       })
     }
 
+    if (!(await isTechLead(userId))) {
+      return new Response(JSON.stringify({ error: "Only TECH_LEADs can create tasks" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
     const task = await prisma.task.create({
-      data: {
-        title,
-        description,
-        status,
-        userId,
-      },
+      data: { title, description, status, userId },
     })
 
     return new Response(JSON.stringify(task), {
@@ -58,15 +61,24 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT handler — updates a task by ID
+// PUT handler — updates a task by ID (DEVs can only mark status as DONE)
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { id, title, description, status, dueDate } = body
+    const { id, title, description, status, dueDate, userId } = body
 
-    if (!id) {
-      return new Response(JSON.stringify({ error: "Task ID is required" }), {
+    if (!id || !userId) {
+      return new Response(JSON.stringify({ error: "Task ID and User ID are required" }), {
         status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const isLead = await isTechLead(userId)
+
+    if (!isLead && status !== 'DONE') {
+      return new Response(JSON.stringify({ error: "Only TECH_LEADs can update anything other than marking as DONE" }), {
+        status: 403,
         headers: { "Content-Type": "application/json" },
       })
     }
@@ -95,6 +107,40 @@ export async function PUT(request: Request) {
 
   } catch (error) {
     console.error("Error updating task:", error)
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+}
+
+// DELETE handler — deletes a task (TECH_LEAD only)
+export async function DELETE(request: Request) {
+  try {
+    const { id, userId } = await request.json()
+
+    if (!id || !userId) {
+      return new Response(JSON.stringify({ error: "Task ID and User ID are required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    if (!(await isTechLead(userId))) {
+      return new Response(JSON.stringify({ error: "Only TECH_LEADs can delete tasks" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    await prisma.task.delete({ where: { id } })
+
+    return new Response(JSON.stringify({ message: "Task deleted" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })
+  } catch (error) {
+    console.error("Error deleting task:", error)
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
